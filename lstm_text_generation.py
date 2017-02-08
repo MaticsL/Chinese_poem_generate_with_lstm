@@ -4,7 +4,7 @@ import sys
 import numpy as np
 from keras.models import Sequential
 from keras.layers import Dense, Activation
-from keras.layers import LSTM, Dropout
+from keras.layers import LSTM, Dropout, Embedding
 from keras.optimizers import RMSprop
 
 from utils import init_stop_words, get_training_data, check_rythm
@@ -28,9 +28,11 @@ char_indices = dict((c, i) for i, c in enumerate(chars))
 indices_char = dict((i, c) for i, c in enumerate(chars))
 
 # cut the text in semi-redundant sequences of maxlen characters
-txt_maxlen = 5000
+txt_maxlen = 15000
 maxlen = 5
 step = 3
+vec_size = 100
+
 sentences = []
 next_chars = []
 for i in range(0, min(len(text), txt_maxlen) - maxlen, step):
@@ -39,17 +41,19 @@ for i in range(0, min(len(text), txt_maxlen) - maxlen, step):
 print('nb sequences:', len(sentences))
 
 print('Vectorization...')
-X = np.zeros((len(sentences), maxlen, len(chars)), dtype=np.bool)
-y = np.zeros((len(sentences), len(chars)), dtype=np.bool)
+X = np.zeros((len(sentences), maxlen), dtype='float32')
+y = np.zeros((len(sentences), len(chars)), dtype='bool')
 for i, sentence in enumerate(sentences):
     for t, char in enumerate(sentence):
-        X[i, t, char_indices[char]] = 1
+        X[i, t] = char_indices[char]
     y[i, char_indices[next_chars[i]]] = 1
 
 
 # build the model: a single LSTM
 print('Build model...')
 model = Sequential()
+model.add(Embedding(input_dim=len(chars), output_dim=vec_size,
+                    input_length=maxlen))
 model.add(LSTM(256, input_shape=(maxlen, len(chars)), return_sequences=True))
 model.add(Dropout(0.15))
 model.add(LSTM(256, return_sequences=False))
@@ -76,6 +80,11 @@ for iteration in range(1, iter_num):
     print()
     print('-' * 50)
     print('Iteration', iteration)
+    if iteration == 30:
+        optimizer = RMSprop(lr=0.01)
+        model.compile(loss='categorical_crossentropy',
+                      optimizer=optimizer)
+
     model.fit(X, y, batch_size=128, nb_epoch=1, verbose=1)
 
     start_index = random.randint(0, len(text) - maxlen - 1)
@@ -85,9 +94,9 @@ for iteration in range(1, iter_num):
     generated += sentence
     for line in wu_yan_lv_shi:
         for p in line:
-            x = np.zeros((1, maxlen, len(chars)))
+            x = np.zeros((1, maxlen))
             for t, char in enumerate(sentence):
-                x[0, t, char_indices[char]] = 1.
+                x[0, t] = char_indices[char]
             preds = model.predict(x, verbose=0)[0]
             success = False
             while not success:
